@@ -1,0 +1,30 @@
+name: loghub
+
+# Сборка и тесты LogHub на каждый push и Pull Request.
+
+on:
+  push:
+    branches: [ main, develop, 'feature/**' ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Установка .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Восстановление пакетов
+        run: dotnet restore LogHub.sln
+
+      - name: Сборка
+        run: dotnet build LogHub.sln --no-restore --configuration Release
+
+      - name: Тесты
+        run: dotnet test LogHub.sln --no-build --configuration Release --verbosity normal
