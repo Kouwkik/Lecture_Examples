@@ -1,47 +1,38 @@
 using System;
+using Microsoft.Extensions.DependencyInjection;
+using LogHub.App;
 using LogHub.Config;
-using LogHub.Filtering;
-using LogHub.Formatting;
-using LogHub.Parsing;
-using LogHub.Processing;
 using LogHub.Reading;
-using LogHub.Sinks;
 
 namespace LogHub
 {
-    // Композиционный корень — единственное место, где собираются конкретные
-    // реализации и где живут обращения к файлам и консоли. В ЛР2 эта сборка
-    // переедет в DI-контейнер.
+    // Точка входа и композиционный корень приложения.
     public static class Program
     {
         public static int Main(string[] args)
         {
             if (args.Length == 0)
             {
-                Console.Error.WriteLine("Использование: dotnet run --project LogHub -- <путь-к-логу> [путь-к-конфигу]");
-                Console.Error.WriteLine("Приёмники: " + string.Join(", ", SinkRegistry.Names()));
-                Console.Error.WriteLine("Форматы:   " + string.Join(", ", FormatterRegistry.Names()));
+                Console.Error.WriteLine("Использование: dotnet run --project LogHub -- <путь-к-логу> [профиль-конфигурации]");
+                Console.Error.WriteLine("Профили: loghub.console.config (в консоль), loghub.file.config (в файл)");
                 return 1;
             }
 
             var logPath = args[0];
-            var configPath = args.Length > 1 ? args[1] : "loghub.config";
+            var configPath = args.Length > 1 ? args[1] : "loghub.console.config";
 
-            var config = ConfigLoader.Load(configPath);
+            // Загрузка выбранного профиля конфигурации. Смена профиля меняет
+            // поведение без перекомпиляции — передаётся другой файл.
+            var config = ConfigProfiles.Load(configPath);
 
-            ILogReader reader = new FileLogReader(logPath);
-            ILogParser parser = new PipeLogParser();
-            ILogFilter filter = new SeverityFilter(config["minSeverity"]);
-            ILogFormatter formatter = FormatterRegistry.Create(config["format"]);
-
-            using (var sink = SinkRegistry.Create(config["sink"], config))
+            // new FileLogReader — единственное создание сервиса вне контейнера,
+            // и оно здесь, в композиционном корне.
+            using (var provider = CompositionRoot.Build(config, new FileLogReader(logPath)))
             {
-                var processor = new LogProcessor(parser, filter, formatter, sink);
-                var result = processor.Process(reader);
-                Console.WriteLine($"Записано: {result.Written}, пропущено: {result.Skipped}");
+                // Единственное за всё приложение обращение к IServiceProvider.
+                var app = provider.GetRequiredService<LogHubApp>();
+                return app.Run();
             }
-
-            return 0;
         }
     }
 }
